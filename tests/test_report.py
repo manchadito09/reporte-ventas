@@ -319,3 +319,19 @@ def test_long_text_is_cut_with_ellipsis_to_fit():
     assert cut.endswith("…")
     assert pdf.get_string_width(cut) <= 40
     assert fit_text(pdf, "Ratón", max_width=40) == "Ratón"   # lo corto no se toca
+
+
+def test_footer_long_excel_name_does_not_overlap_date():
+    # Con un nombre de Excel larguísimo, "Fuente" y "Generado el" se pisaban
+    pdf = ReportPDF("Ventas consolidadas de todas las delegaciones de la empresa "
+                    "enero-diciembre 2025 versión final revisada.xlsx")
+    pdf.set_font("DejaVu", "", 7.5)
+
+    left, right = pdf.footer_texts()
+
+    assert left.startswith("Fuente: Ventas") and left.endswith("…")
+    assert pdf.get_string_width(left) + pdf.get_string_width(right) < pdf.epw
+    # Un nombre corto se queda entero
+    short = ReportPDF("ventas.xlsx")
+    short.set_font("DejaVu", "", 7.5)
+    assert short.footer_texts()[0] == "Fuente: ventas.xlsx"
