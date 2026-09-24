@@ -52,10 +52,18 @@ Antes de calcular nada, **limpia los datos**:
 | Filas vacías | Las descarta |
 | Filas duplicadas (copiar y pegar) | Las descarta |
 | `"  PACK 500 FOLIOS "`, `"pack 500 folios"` | Las unifica en `"Pack 500 folios"` |
-| Cantidades a 0 o negativas, precios vacíos, fechas rotas | Descarta la fila |
+| Precios o cantidades escritos como texto (`22,90`, `22,90 €`, `1.234,56`) | Los entiende como números |
 | Fechas en texto (`2025-01-05` o `05/01/2025`) | Las entiende sin confundir día y mes |
+| Devoluciones (cantidad negativa) | Las **resta** del total y lo indica en el informe |
+| Cabeceras con espacios o mayúsculas (`" Fecha "`, `PRODUCTO`), columnas extra o en otro orden | Las reconoce igual |
+| Cantidad 0, precio vacío o ilegible, fecha rota | Descarta la fila |
 
 Si el Excel no existe o le faltan columnas, lo avisa con un mensaje claro en español.
+Y si tiene que descartar **más del 5 %** de las filas, el informe lo destaca en ámbar
+(*"⚠ Revisa tu Excel..."*) para que nadie se fíe de un total incompleto.
+
+El informe se adapta a los datos: nombres largos se recortan con `…`, más de 7 categorías
+se agrupan en *"Otras"*, y si el periodo cruza de año los meses llevan el año (`Nov 24`, `Ene 25`).
 
 ## Para desarrolladores: instalación (Windows, PowerShell)
 
@@ -105,13 +113,28 @@ python generate_data.py
 
 Siempre sale idéntico (usa una semilla fija). Tarda unos 10 segundos.
 
+### Excels de otras empresas (ficticias)
+
+`data/empresas/` tiene 4 Excels de empresas **inventadas**, cada uno pensado para poner a prueba algo distinto:
+
+| Archivo | Qué pone a prueba |
+|---|---|
+| `ropa_tienda.xlsx` | Periodo que cruza de año (nov 2024 – abr 2025) |
+| `bebidas_distribuidora.xlsx` | Venta al por mayor, cifras de millones |
+| `electronica_tienda.xlsx` | 15 categorías y nombres de producto muy largos |
+| `oficina_excel_manual.xlsx` | Excel tecleado a mano: cabeceras raras, precios en texto, devoluciones |
+
+```powershell
+python generate_company_samples.py
+```
+
 ## Tests
 
 ```powershell
 pytest -v
 ```
 
-11 tests comprueban la limpieza de datos y los cálculos (pedidos únicos, ticket medio, top 5, porcentajes, los 12 meses en orden...).
+21 tests comprueban la limpieza de datos (precios en texto, devoluciones, duplicados, fechas...), los cálculos (pedidos únicos, ticket medio, top 5, porcentajes...), la maquetación del PDF y el programa completo de principio a fin.
 
 ## Fabricar el ejecutable
 
@@ -147,7 +170,8 @@ reporte-ventas/
 ├── app.py               # entrada del .exe: arrastrar Excel / elegir archivo
 ├── build_exe.ps1        # fabrica InformeVentas.exe
 ├── generate_data.py     # crea el Excel de ejemplo con datos falsos
-├── data/                # Excel de ejemplo
+├── generate_company_samples.py  # crea los Excels de 4 empresas ficticias
+├── data/                # Excel de ejemplo + data/empresas/
 ├── fonts/               # fuente DejaVu Sans + licencia
 ├── tests/               # tests con pytest
 ├── docs/                # imágenes del README
