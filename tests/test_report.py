@@ -11,7 +11,10 @@ Ejecutar:
 import pandas as pd
 import pytest
 
-from generate_report import clean_data, compute_summary
+from generate_report import (
+    ReportPDF, clean_data, compute_summary, fit_text, fold_small_rows,
+    month_labels, quality_warning,
+)
 
 
 def make_df(rows: list[tuple]) -> pd.DataFrame:
@@ -84,15 +87,63 @@ def test_clean_drops_impossible_rows():
     df = make_df([
         ("2026-01-05", "PED-1", "Ratón", "Informática", 1, 20.0, "Madrid"),   # válida
         ("2026-01-05", "PED-2", "Ratón", "Informática", 0, 20.0, "Madrid"),   # cantidad 0
-        ("2026-01-05", "PED-3", "Ratón", "Informática", -2, 20.0, "Madrid"),  # cantidad negativa
+        ("2026-01-05", "PED-3", "Ratón", "Informática", 1, -5.0, "Madrid"),  # precio negativo
         ("2026-01-05", "PED-4", "Ratón", "Informática", 1, None, "Madrid"),   # sin precio
         ("no es fecha", "PED-5", "Ratón", "Informática", 1, 20.0, "Madrid"),  # fecha rota
+        ("2026-01-05", "PED-6", "Ratón", "Informática", 1, "abc", "Madrid"),  # precio ilegible
     ])
 
     clean, report = clean_data(df)
 
     assert clean["pedido_id"].tolist() == ["PED-1"]
-    assert report["invalid_rows"] == 4
+    assert report["invalid_rows"] == 5
+
+
+def test_clean_reads_prices_written_as_spanish_text():
+    # Precios tecleados a mano en una oficina española
+    df = make_df([
+        ("2025-01-05", "PED-1", "A", "X", 1, "22,90", "Madrid"),
+        ("2025-01-05", "PED-2", "B", "X", 1, "22,90 €", "Madrid"),
+        ("2025-01-05", "PED-3", "C", "X", 1, "1.234,56", "Madrid"),
+        ("2025-01-05", "PED-4", "D", "X", 1, "1.234", "Madrid"),
+        ("2025-01-05", "PED-5", "E", "X", 1, 22.9, "Madrid"),
+        ("2025-01-05", "PED-6", "F", "X", "3", "10,00", "Madrid"),     # cantidad en texto
+    ])
+
+    clean, report = clean_data(df)
+
+    assert report["invalid_rows"] == 0
+    assert clean["precio_unitario"].tolist() == pytest.approx([22.9, 22.9, 1234.56, 1234.0, 22.9, 10.0])
+    assert clean["cantidad"].tolist() == [1, 1, 1, 1, 1, 3]
+
+
+def test_returns_are_kept_and_subtracted_from_total():
+    # Opción elegida: las devoluciones (cantidad negativa) restan del total
+    df = make_df([
+        ("2025-01-05", "PED-1", "Silla", "Oficina", 3, 100.0, "Madrid"),
+        ("2025-01-20", "PED-2", "Silla", "Oficina", -1, 100.0, "Madrid"),   # devuelve 1
+    ])
+    clean, report = clean_data(df)
+
+    summary = compute_summary(clean)
+
+    assert report["returns"] == 1
+    assert report["invalid_rows"] == 0
+    assert summary["total_sales"] == pytest.approx(200.0)           # 300 - 100
+    assert summary["top_products"].loc[0, "unidades"] == 2           # 3 - 1
+
+
+def test_quality_warning_only_when_many_rows_are_discarded():
+    # 1 de 10 filas ilegible (10 %) -> avisa; 0 de 10 -> no avisa
+    good = [("2025-01-05", f"PED-{i}", "A", "X", 1, 10.0, "Madrid") for i in range(9)]
+    bad = [("2025-01-05", "PED-X", "A", "X", 1, "abc", "Madrid")]
+
+    _, report_bad = clean_data(make_df(good + bad))
+    _, report_ok = clean_data(make_df(good + [("2025-01-05", "PED-Y", "A", "X", 1, 10.0, "Madrid")]))
+
+    assert report_bad["invalid_share"] == pytest.approx(0.10)
+    assert "Revisa tu Excel" in quality_warning(report_bad)
+    assert quality_warning(report_ok) is None
 
 
 def test_clean_reads_text_dates_without_swapping_day_and_month():
@@ -188,3 +239,48 @@ def test_summary_full_year_months_in_order():
     # Salen los 12 meses, de enero a diciembre, cada uno con su importe
     assert [p.month for p in monthly.index] == list(range(1, 13))
     assert monthly.tolist() == pytest.approx([float(m) for m in range(1, 13)])
+
+
+# --------------------------------------------------------------------------
+# Presentación del PDF
+# --------------------------------------------------------------------------
+def test_many_categories_fold_into_others():
+    # 15 categorías -> 6 más grandes + "Otras (9)" = 7 filas, sin perder dinero
+    table = pd.DataFrame({
+        "categoria": [f"Cat {i}" for i in range(15)],
+        "ingresos": [float(100 - i) for i in range(15)],
+    })
+    table["porcentaje"] = table["ingresos"] / table["ingresos"].sum() * 100
+
+    folded = fold_small_rows(table, "categoria", max_rows=7)
+
+    assert len(folded) == 7
+    assert folded["categoria"].iloc[-1] == "Otras (9)"
+    assert folded["ingresos"].sum() == pytest.approx(table["ingresos"].sum())
+    assert folded["porcentaje"].sum() == pytest.approx(100.0)
+
+
+def test_few_categories_are_not_folded():
+    table = pd.DataFrame({"categoria": ["A", "B"], "ingresos": [2.0, 1.0], "porcentaje": [66.7, 33.3]})
+
+    assert fold_small_rows(table, "categoria", max_rows=7).equals(table)
+
+
+def test_month_labels_show_year_only_when_period_crosses_years():
+    one_year = pd.period_range("2025-01", "2025-03", freq="M")
+    two_years = pd.period_range("2024-11", "2025-02", freq="M")
+
+    assert month_labels(one_year) == ["Ene", "Feb", "Mar"]
+    assert month_labels(two_years) == ["Nov 24", "Dic 24", "Ene 25", "Feb 25"]
+
+
+def test_long_text_is_cut_with_ellipsis_to_fit():
+    pdf = ReportPDF("prueba.xlsx")
+    pdf.set_font("DejaVu", "", 8.5)
+    long_name = "Televisor OLED 77 pulgadas 4K 120 Hz con HDR, Dolby Vision y barra de sonido"
+
+    cut = fit_text(pdf, long_name, max_width=40)
+
+    assert cut.endswith("…")
+    assert pdf.get_string_width(cut) <= 40
+    assert fit_text(pdf, "Ratón", max_width=40) == "Ratón"   # lo corto no se toca
