@@ -1,0 +1,14 @@
+# Salida generada (el PDF se crea al ejecutar)
+output/
+
+# Entorno virtual
+.venv/
+venv/
+
+# Cachés de Python y pytest
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Archivos temporales de Excel abierto
+~$*.xlsx
