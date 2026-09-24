@@ -37,8 +37,14 @@ MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
 MONTH_NAMES_LONG = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
                     "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
+# Carpeta base de los recursos (fuentes).
+# - Ejecutado como script: la carpeta de este archivo.
+# - Dentro del .exe (PyInstaller): la carpeta temporal donde se descomprime,
+#   que PyInstaller guarda en sys._MEIPASS.
+BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+
 # Fuente TTF incluida en el repo: soporta el símbolo € y las tildes
-FONT_DIR = Path(__file__).parent / "fonts"
+FONT_DIR = BASE_DIR / "fonts"
 
 # Tamaño del gráfico en pulgadas (ancho, alto). El PDF respeta esta proporción
 CHART_SIZE = (7.5, 3.6)
@@ -564,7 +570,20 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
 
 
 # --------------------------------------------------------------------------
-# 6) Programa principal
+# 6) Cadena completa: la usan la terminal (main) y el .exe (app.py)
+# --------------------------------------------------------------------------
+def generate_report(input_path: Path, output_path: Path) -> tuple[dict, dict]:
+    """Excel -> PDF. Devuelve (resumen, informe_de_limpieza) por si se quieren mostrar."""
+    raw = load_data(input_path)
+    clean, cleaning = clean_data(raw)
+    summary = compute_summary(clean)
+    chart = build_chart(summary["monthly"])
+    build_pdf(summary, chart, cleaning, input_path.name, output_path)
+    return summary, cleaning
+
+
+# --------------------------------------------------------------------------
+# 7) Programa principal (terminal)
 # --------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(description="Genera un informe de ventas en PDF desde un Excel.")
@@ -579,11 +598,7 @@ def main() -> int:
     output_path = Path(args.output)
 
     try:
-        raw = load_data(input_path)
-        clean, cleaning = clean_data(raw)
-        summary = compute_summary(clean)
-        chart = build_chart(summary["monthly"])
-        build_pdf(summary, chart, cleaning, input_path.name, output_path)
+        summary, _ = generate_report(input_path, output_path)
     except ReportError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1  # código de salida != 0 -> "algo fue mal" (útil en scripts)

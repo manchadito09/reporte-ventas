@@ -10,6 +10,31 @@ Sin errores de copiar y pegar. Y el informe sale igual cada vez que lo generas.
 |---|---|
 | ![Excel de ventas sin procesar](docs/antes.png) | ![Informe PDF generado](docs/despues.png) |
 
+## Cómo usarlo (sin instalar nada)
+
+Para usarlo en la oficina no hace falta saber programar ni instalar Python.
+
+1. **Descarga** [`InformeVentas.exe`](https://github.com/manchadito09/reporte-ventas/releases/latest)
+   y guárdalo donde quieras (por ejemplo, en el Escritorio).
+2. **Arrastra tu Excel** de ventas encima de `InformeVentas.exe`.
+   *(O haz doble clic en `InformeVentas.exe` y elige el Excel en la ventana.)*
+3. Espera unos segundos. El informe se abre solo y se guarda **junto a tu Excel**
+   con el mismo nombre terminado en `_informe.pdf`.
+
+```
+ventas 2025.xlsx  ──arrastrar──▶  InformeVentas.exe  ──▶  ventas 2025_informe.pdf
+```
+
+> **La primera vez**, Windows puede mostrar *"Windows protegió su PC"*.
+> Es normal en programas pequeños que no son de una gran empresa.
+> Pulsa **Más información** → **Ejecutar de todas formas**. Solo pasa una vez.
+
+Tu Excel necesita estas columnas (en cualquier orden):
+`fecha`, `pedido_id`, `producto`, `categoria`, `cantidad`, `precio_unitario`, `ciudad`.
+Si falta alguna, el programa te dirá cuál.
+
+Tus datos **no salen de tu ordenador**: todo se procesa en local.
+
 ## Qué hace
 
 Lee un Excel de ventas (probado con 25.000 filas, unos 10 segundos) y genera un PDF con:
@@ -32,7 +57,7 @@ Antes de calcular nada, **limpia los datos**:
 
 Si el Excel no existe o le faltan columnas, lo avisa con un mensaje claro en español.
 
-## Instalación (Windows, PowerShell)
+## Para desarrolladores: instalación (Windows, PowerShell)
 
 Necesitas [Python 3.10 o superior](https://www.python.org/downloads/).
 
@@ -86,7 +111,19 @@ Siempre sale idéntico (usa una semilla fija). Tarda unos 10 segundos.
 pytest -v
 ```
 
-10 tests comprueban la limpieza de datos y los cálculos (pedidos únicos, ticket medio, top 5, porcentajes, los 12 meses en orden...).
+11 tests comprueban la limpieza de datos y los cálculos (pedidos únicos, ticket medio, top 5, porcentajes, los 12 meses en orden...).
+
+## Fabricar el ejecutable
+
+```powershell
+pip install -r requirements-dev.txt
+.\build_exe.ps1
+```
+
+Crea `dist\InformeVentas.exe` (~55 MB, tarda un par de minutos). Lleva dentro Python,
+las librerías y la fuente, así que funciona en cualquier Windows sin instalar nada.
+El `.exe` no se guarda en git: se publica en las
+[Releases](https://github.com/manchadito09/reporte-ventas/releases) de GitHub.
 
 ## Tecnologías
 
@@ -98,6 +135,8 @@ pytest -v
 | **matplotlib** | Dibujar el gráfico |
 | **fpdf2** | Montar el PDF |
 | **pytest** | Tests automáticos |
+| **tkinter** | Ventana para elegir el Excel y avisos (viene con Python) |
+| **PyInstaller** | Empaquetar todo en un único `InformeVentas.exe` |
 | **DejaVu Sans** | Fuente libre incluida en `fonts/` para mostrar `€` y tildes en el PDF |
 
 ## Estructura
@@ -105,12 +144,15 @@ pytest -v
 ```
 reporte-ventas/
 ├── generate_report.py   # programa principal: Excel -> PDF
+├── app.py               # entrada del .exe: arrastrar Excel / elegir archivo
+├── build_exe.ps1        # fabrica InformeVentas.exe
 ├── generate_data.py     # crea el Excel de ejemplo con datos falsos
 ├── data/                # Excel de ejemplo
 ├── fonts/               # fuente DejaVu Sans + licencia
 ├── tests/               # tests con pytest
 ├── docs/                # imágenes del README
-└── requirements.txt
+├── requirements.txt     # librerías para usar el programa
+└── requirements-dev.txt # + PyInstaller, para fabricar el .exe
 ```
 
 ## Mejoras futuras
@@ -118,7 +160,7 @@ reporte-ventas/
 - Enviar el informe por email automáticamente
 - Programar la ejecución (por ejemplo, cada lunes a las 8:00)
 - Aceptar CSV y otros formatos además de `.xlsx`
-- Pequeña interfaz gráfica para elegir el archivo sin usar la terminal
+- Firmar el `.exe` con un certificado para que Windows no muestre el aviso
 - Filtros por ciudad o por rango de fechas
 - Comparar con el periodo anterior (por ejemplo, +12 % frente al año anterior)
 
