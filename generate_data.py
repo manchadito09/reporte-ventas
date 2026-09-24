@@ -12,6 +12,8 @@ Uso:
 
 import argparse
 import random
+import re
+import zipfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -24,6 +26,10 @@ SEED = 42
 # Periodo de ventas: enero a junio de 2026
 START_DATE = date(2026, 1, 1)
 END_DATE = date(2026, 6, 30)
+
+# Fecha fija que se escribe "por dentro" del .xlsx (ver make_reproducible)
+FIXED_TIMESTAMP = "2026-07-01T00:00:00Z"
+FIXED_ZIP_TIME = (2026, 7, 1, 0, 0, 0)
 
 # Cuántas líneas de pedido limpias queremos (luego se suma la suciedad)
 TARGET_ROWS = 1180
@@ -169,6 +175,35 @@ def save_excel(rows: list[dict], output_path: Path) -> None:
         row[5].number_format = "#,##0.00"     # precio_unitario
     ws.freeze_panes = "A2"  # la cabecera se queda fija al bajar
     wb.save(output_path)
+    make_reproducible(output_path)
+
+
+def make_reproducible(xlsx_path: Path) -> None:
+    """Quita la hora actual de dentro del .xlsx para que salga igual byte a byte.
+
+    Un .xlsx es un ZIP con archivos XML. La hora se cuela en dos sitios:
+    - docProps/core.xml guarda "creado" y "modificado" = ahora
+    - cada archivo del ZIP lleva su propia hora de guardado
+    Si no lo arreglamos, git ve el Excel "cambiado" cada vez que lo regeneramos,
+    aunque los datos sean idénticos.
+    """
+    with zipfile.ZipFile(xlsx_path) as zin:
+        entries = [(info.filename, zin.read(info.filename)) for info in zin.infolist()]
+
+    with zipfile.ZipFile(xlsx_path, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in entries:
+            if name == "docProps/core.xml":
+                # Cambiamos el contenido de <dcterms:created> y <dcterms:modified>
+                text = data.decode("utf-8")
+                text = re.sub(
+                    r"(<dcterms:(?:created|modified)[^>]*>)[^<]*(<)",
+                    rf"\g<1>{FIXED_TIMESTAMP}\g<2>",
+                    text,
+                )
+                data = text.encode("utf-8")
+            info = zipfile.ZipInfo(name, date_time=FIXED_ZIP_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            zout.writestr(info, data)
 
 
 def main() -> None:
