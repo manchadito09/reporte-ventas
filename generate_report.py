@@ -392,10 +392,22 @@ class ReportPDF(FPDF):
         self.ln(2)
         self.set_font("DejaVu", "", 7.5)
         self.set_text_color(*_rgb(INK_SOFT))
-        today = date.today().strftime("%d/%m/%Y")
-        self.cell(0, 5, f"Fuente: {self.source_name}", align="L")
+        left, right = self.footer_texts()
+        self.cell(0, 5, left, align="L")
         self.set_x(self.l_margin)
-        self.cell(0, 5, f"Generado automáticamente el {today}", align="R")
+        self.cell(0, 5, right, align="R")
+
+    def footer_texts(self) -> tuple[str, str]:
+        """Textos del pie: (fuente, fecha). Usa la fuente que esté puesta.
+
+        La fecha de la derecha mide siempre lo mismo: le reservamos su sitio
+        y recortamos el nombre del Excel con "…" para que no la pise.
+        """
+        right = f"Generado automáticamente el {date.today().strftime('%d/%m/%Y')}"
+        gap = 6  # mm de aire entre los dos textos
+        room = self.epw - self.get_string_width(right) - gap
+        left = fit_text(self, f"Fuente: {self.source_name}", room)
+        return left, right
 
 
 def _section_title(pdf: FPDF, text: str) -> None:
