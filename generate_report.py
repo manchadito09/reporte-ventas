@@ -598,7 +598,7 @@ def main() -> int:
     output_path = Path(args.output)
 
     try:
-        summary, _ = generate_report(input_path, output_path)
+        summary, cleaning = generate_report(input_path, output_path)
     except ReportError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1  # código de salida != 0 -> "algo fue mal" (útil en scripts)
