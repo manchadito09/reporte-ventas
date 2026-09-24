@@ -99,6 +99,23 @@ def _canonical_names(names: pd.Series) -> pd.Series:
     return key.map(most_common)
 
 
+def _parse_dates(dates: pd.Series) -> pd.Series:
+    """Convierte la columna de fechas, venga como venga.
+
+    - Si Excel ya las guarda como fecha, se dejan tal cual.
+    - Si vienen como texto, se aceptan dos formatos:
+        "2026-01-05"  (internacional: año-mes-día)
+        "05/01/2026"  (español: día/mes/año)
+    Probamos cada formato por separado para no confundir día y mes.
+    Lo que no encaje en ninguno se queda vacío (NaT) y se descarta después.
+    """
+    if pd.api.types.is_datetime64_any_dtype(dates):
+        return dates
+    iso = pd.to_datetime(dates, format="ISO8601", errors="coerce")
+    spanish = pd.to_datetime(dates, format="%d/%m/%Y", errors="coerce")
+    return iso.fillna(spanish)
+
+
 def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Limpia el Excel y devuelve (datos_limpios, resumen_de_la_limpieza).
 
@@ -137,7 +154,7 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     report["duplicates"] = int(dup.sum())
 
     # 4) Tipos. errors="coerce" = si algo no se puede convertir, se queda vacío (NaN)
-    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce", dayfirst=True)
+    df["fecha"] = _parse_dates(df["fecha"])
     df["cantidad"] = pd.to_numeric(df["cantidad"], errors="coerce")
     df["precio_unitario"] = pd.to_numeric(df["precio_unitario"], errors="coerce")
 
