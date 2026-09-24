@@ -211,7 +211,9 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     # Si es mucha, el informe avisa: el total podría estar incompleto.
     report["invalid_share"] = report["invalid_rows"] / len(invalid) if len(invalid) else 0.0
 
-    df["cantidad"] = df["cantidad"].astype(int)
+    # La cantidad se queda con decimales: hay negocios que venden por kilos,
+    # metros o litros (2,5 kg). Antes se hacía astype(int), que CORTA sin
+    # redondear (2,5 -> 2) y el total salía mal sin avisar.
     report["returns"] = int((df["cantidad"] < 0).sum())
 
     # 5) Ingreso de cada línea (negativo en las devoluciones)
@@ -287,6 +289,14 @@ def format_number(value: float, decimals: int = 0) -> str:
     text = f"{value:,.{decimals}f}"  # formato inglés: 1,234,567.89
     # Intercambiamos , y . usando un carácter temporal
     return text.replace(",", "#").replace(".", ",").replace("#", ".")
+
+
+def format_quantity(value: float) -> str:
+    """Unidades: sin decimales si es un número entero (147), con ellos si no (2,5)."""
+    if float(value).is_integer():
+        return format_number(value, 0)
+    # Hasta 2 decimales, quitando ceros sobrantes: 2,50 -> 2,5
+    return format_number(value, 2).rstrip("0").rstrip(",")
 
 
 def format_eur(value: float, decimals: int = 2) -> str:
@@ -513,7 +523,7 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     _table(
         pdf, pdf.l_margin, left_w,
         ["Producto", "Unidades", "Ingresos"],
-        [[r.producto, format_number(r.unidades), format_eur(r.ingresos, 0)]
+        [[r.producto, format_quantity(r.unidades), format_eur(r.ingresos, 0)]
          for r in top.itertuples()],
         [0.52, 0.18, 0.30],
     )

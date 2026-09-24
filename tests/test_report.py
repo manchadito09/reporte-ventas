@@ -13,7 +13,7 @@ import pytest
 
 from generate_report import (
     ReportPDF, clean_data, compute_summary, fit_text, fold_small_rows,
-    month_labels, quality_warning,
+    format_quantity, month_labels, quality_warning,
 )
 
 
@@ -169,6 +169,27 @@ def test_clean_computes_line_revenue():
     clean, _ = clean_data(df)
 
     assert clean.loc[0, "ingreso"] == pytest.approx(61.5)  # 3 × 20,5
+
+
+def test_clean_keeps_decimal_quantities():
+    # Venta por kilos o metros: 2,5 × 10 € = 25 €. Antes se cortaba a 2 (20 €) sin avisar
+    df = make_df([
+        ("2025-01-05", "PED-1", "Cable", "Ferretería", "2,5", 10.0, "Madrid"),
+        ("2025-01-05", "PED-2", "Queso", "Alimentación", 0.75, 20.0, "Madrid"),
+    ])
+
+    clean, report = clean_data(df)
+
+    assert report["invalid_rows"] == 0
+    assert clean["cantidad"].tolist() == pytest.approx([2.5, 0.75])
+    assert clean["ingreso"].tolist() == pytest.approx([25.0, 15.0])
+
+
+def test_quantity_shows_decimals_only_when_needed():
+    assert format_quantity(147.0) == "147"
+    assert format_quantity(1255100.0) == "1.255.100"
+    assert format_quantity(2.5) == "2,5"
+    assert format_quantity(0.75) == "0,75"
 
 
 # --------------------------------------------------------------------------
