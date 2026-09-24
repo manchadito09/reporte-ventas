@@ -12,7 +12,7 @@ Sin errores de copiar y pegar. Y el informe sale igual cada vez que lo generas.
 
 ## Qué hace
 
-Lee un Excel de ventas y genera un PDF con:
+Lee un Excel de ventas (probado con 25.000 filas, unos 10 segundos) y genera un PDF con:
 
 - **KPIs**: total vendido, número de pedidos y ticket medio
 - **Gráfico**: ventas por mes
@@ -28,7 +28,7 @@ Antes de calcular nada, **limpia los datos**:
 | Filas duplicadas (copiar y pegar) | Las descarta |
 | `"  PACK 500 FOLIOS "`, `"pack 500 folios"` | Las unifica en `"Pack 500 folios"` |
 | Cantidades a 0 o negativas, precios vacíos, fechas rotas | Descarta la fila |
-| Fechas en texto (`2026-01-05` o `05/01/2026`) | Las entiende sin confundir día y mes |
+| Fechas en texto (`2025-01-05` o `05/01/2025`) | Las entiende sin confundir día y mes |
 
 Si el Excel no existe o le faltan columnas, lo avisa con un mensaje claro en español.
 
@@ -70,14 +70,15 @@ Para usar tu propio Excel, basta con que tenga estas columnas:
 ### Datos de ejemplo
 
 `data/sample_sales.xlsx` contiene **datos inventados** (ninguna persona ni empresa real):
-unas 1.200 líneas de pedido de enero a junio de 2026, con suciedad puesta a propósito.
+**un año completo (2025)** con unas 25.000 líneas de pedido, 14.000 pedidos y 60 productos en 6 categorías,
+con temporada realista (rebajas, verano flojo, Black Friday, Navidad) y suciedad puesta a propósito.
 Para volver a crearlo:
 
 ```powershell
 python generate_data.py
 ```
 
-Siempre sale idéntico (usa una semilla fija).
+Siempre sale idéntico (usa una semilla fija). Tarda unos 10 segundos.
 
 ## Tests
 
@@ -85,7 +86,7 @@ Siempre sale idéntico (usa una semilla fija).
 pytest -v
 ```
 
-9 tests comprueban la limpieza de datos y los cálculos (pedidos únicos, ticket medio, top 5, porcentajes...).
+10 tests comprueban la limpieza de datos y los cálculos (pedidos únicos, ticket medio, top 5, porcentajes, los 12 meses en orden...).
 
 ## Tecnologías
 
@@ -119,7 +120,7 @@ reporte-ventas/
 - Aceptar CSV y otros formatos además de `.xlsx`
 - Pequeña interfaz gráfica para elegir el archivo sin usar la terminal
 - Filtros por ciudad o por rango de fechas
-- Comparar con el periodo anterior (por ejemplo, +12 % frente al semestre pasado)
+- Comparar con el periodo anterior (por ejemplo, +12 % frente al año anterior)
 
 ## Licencia de la fuente
 
