@@ -18,53 +18,106 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
-from openpyxl import load_workbook
 
 # Semilla fija: el azar sale siempre igual, así el Excel es reproducible
 SEED = 42
 
-# Periodo de ventas: enero a junio de 2026
-START_DATE = date(2026, 1, 1)
-END_DATE = date(2026, 6, 30)
+# Periodo de ventas: año 2025 completo
+START_DATE = date(2025, 1, 1)
+END_DATE = date(2025, 12, 31)
 
 # Fecha fija que se escribe "por dentro" del .xlsx (ver make_reproducible)
-FIXED_TIMESTAMP = "2026-07-01T00:00:00Z"
-FIXED_ZIP_TIME = (2026, 7, 1, 0, 0, 0)
+FIXED_TIMESTAMP = "2026-01-01T00:00:00Z"
+FIXED_ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 
 # Cuántas líneas de pedido limpias queremos (luego se suma la suciedad)
-TARGET_ROWS = 1180
+TARGET_ROWS = 25_000
 
-# Catálogo: producto -> (categoría, precio unitario en euros)
+# Catálogo: producto -> (categoría, precio unitario en euros, peso)
+# Peso = cuántas "papeletas" tiene en el sorteo. Los baratos se venden más a menudo.
 PRODUCTS = {
-    "Portátil 14 pulgadas": ("Informática", 649.00),
-    "Monitor 27 pulgadas": ("Informática", 229.90),
-    "Teclado mecánico": ("Informática", 79.95),
-    "Ratón inalámbrico": ("Informática", 24.99),
-    "Disco SSD 1TB": ("Informática", 89.50),
-    "Silla ergonómica": ("Oficina", 189.00),
-    "Mesa elevable": ("Oficina", 349.00),
-    "Lámpara LED de escritorio": ("Oficina", 34.90),
-    "Pack 500 folios": ("Oficina", 5.49),
-    "Auriculares Bluetooth": ("Audio", 59.99),
-    "Altavoz portátil": ("Audio", 45.00),
-    "Micrófono USB": ("Audio", 69.90),
-    "Cafetera espresso": ("Hogar", 119.00),
-    "Hervidor eléctrico": ("Hogar", 29.95),
-    "Purificador de aire": ("Hogar", 159.00),
+    # Informática
+    "Portátil 14 pulgadas": ("Informática", 649.00, 3),
+    "Portátil 16 pulgadas": ("Informática", 999.00, 2),
+    "Monitor 24 pulgadas": ("Informática", 139.90, 5),
+    "Monitor 27 pulgadas": ("Informática", 229.90, 4),
+    "Teclado mecánico": ("Informática", 79.95, 6),
+    "Ratón inalámbrico": ("Informática", 24.99, 10),
+    "Disco SSD 1TB": ("Informática", 89.50, 6),
+    "Memoria USB 128GB": ("Informática", 14.99, 9),
+    "Webcam Full HD": ("Informática", 49.90, 5),
+    "Hub USB-C 7 en 1": ("Informática", 39.99, 6),
+    # Oficina
+    "Silla ergonómica": ("Oficina", 189.00, 3),
+    "Mesa elevable": ("Oficina", 349.00, 2),
+    "Lámpara LED de escritorio": ("Oficina", 34.90, 6),
+    "Pack 500 folios": ("Oficina", 5.49, 12),
+    "Archivador de palanca": ("Oficina", 3.95, 9),
+    "Pizarra blanca 90x60": ("Oficina", 44.90, 3),
+    "Destructora de papel": ("Oficina", 89.00, 2),
+    "Reposapiés regulable": ("Oficina", 29.90, 4),
+    "Bolígrafos pack 10": ("Oficina", 6.50, 11),
+    "Organizador de cables": ("Oficina", 12.99, 7),
+    # Audio
+    "Auriculares Bluetooth": ("Audio", 59.99, 8),
+    "Auriculares con cancelación": ("Audio", 199.00, 3),
+    "Altavoz portátil": ("Audio", 45.00, 6),
+    "Barra de sonido": ("Audio", 179.00, 2),
+    "Micrófono USB": ("Audio", 69.90, 4),
+    "Tocadiscos Bluetooth": ("Audio", 129.00, 1),
+    "Radio despertador": ("Audio", 34.95, 3),
+    "Cascos de estudio": ("Audio", 99.00, 2),
+    "Altavoz inteligente": ("Audio", 54.99, 5),
+    "Cable jack 3,5 mm": ("Audio", 7.99, 7),
+    # Hogar
+    "Cafetera espresso": ("Hogar", 119.00, 4),
+    "Hervidor eléctrico": ("Hogar", 29.95, 6),
+    "Purificador de aire": ("Hogar", 159.00, 3),
+    "Freidora de aire": ("Hogar", 89.99, 6),
+    "Robot aspirador": ("Hogar", 249.00, 3),
+    "Batidora de vaso": ("Hogar", 59.90, 4),
+    "Tostadora 2 ranuras": ("Hogar", 27.50, 5),
+    "Ventilador de torre": ("Hogar", 49.00, 4),
+    "Calefactor cerámico": ("Hogar", 39.90, 4),
+    "Báscula de cocina": ("Hogar", 15.99, 6),
+    # Telefonía
+    "Smartphone gama media": ("Telefonía", 299.00, 4),
+    "Smartphone gama alta": ("Telefonía", 849.00, 2),
+    "Funda de silicona": ("Telefonía", 12.99, 12),
+    "Protector de pantalla": ("Telefonía", 9.99, 12),
+    "Cargador rápido 30W": ("Telefonía", 24.90, 9),
+    "Batería externa 10000": ("Telefonía", 29.99, 8),
+    "Soporte de coche": ("Telefonía", 16.50, 6),
+    "Smartwatch": ("Telefonía", 179.00, 3),
+    "Pulsera de actividad": ("Telefonía", 39.99, 5),
+    "Cable USB-C 2 m": ("Telefonía", 8.99, 11),
+    # Gaming
+    "Consola portátil": ("Gaming", 329.00, 2),
+    "Mando inalámbrico": ("Gaming", 59.99, 6),
+    "Silla gaming": ("Gaming", 219.00, 2),
+    "Alfombrilla XL": ("Gaming", 19.99, 7),
+    "Ratón gaming": ("Gaming", 49.90, 5),
+    "Teclado gaming RGB": ("Gaming", 89.00, 4),
+    "Auriculares gaming": ("Gaming", 69.00, 5),
+    "Tarjeta regalo 50 €": ("Gaming", 50.00, 6),
+    "Volante de carreras": ("Gaming", 279.00, 1),
+    "Base de carga mandos": ("Gaming", 24.99, 4),
 }
-
-# Peso de cada producto: los baratos se venden más a menudo
-PRODUCT_WEIGHTS = [3, 4, 6, 10, 6, 3, 2, 7, 12, 8, 6, 4, 4, 6, 3]
 
 CITIES = ["Madrid", "Barcelona", "Valencia", "Sevilla", "Bilbao", "Zaragoza", "Málaga"]
 CITY_WEIGHTS = [30, 25, 12, 10, 8, 8, 7]
 
 # Efecto temporada: multiplica cuántos pedidos hay cada mes (1 = normal)
-MONTH_FACTOR = {1: 1.2, 2: 0.8, 3: 0.9, 4: 1.0, 5: 1.1, 6: 1.3}
+# Rebajas en enero, bajón en verano, vuelta al cole en septiembre,
+# Black Friday en noviembre y Navidad en diciembre.
+MONTH_FACTOR = {
+    1: 1.10, 2: 0.80, 3: 0.85, 4: 0.90, 5: 0.95, 6: 1.00,
+    7: 0.85, 8: 0.70, 9: 1.00, 10: 0.95, 11: 1.40, 12: 1.55,
+}
 
-# Cantidad de suciedad a meter
-N_EMPTY_ROWS = 15
-N_DUPLICATES = 12
+# Cantidad de suciedad a meter (proporcional al volumen: ~1,4 % de filas)
+N_EMPTY_ROWS = 150
+N_DUPLICATES = 200
 MESSY_NAME_RATE = 0.08  # 8 % de filas con el nombre del producto mal escrito
 
 
@@ -96,6 +149,7 @@ def build_clean_rows() -> list[dict]:
     rows = []
     order_number = 1
     product_names = list(PRODUCTS)
+    product_weights = [weight for _, _, weight in PRODUCTS.values()]
 
     while len(rows) < TARGET_ROWS:
         order_id = f"PED-{order_number:05d}"  # id provisional, se renumera al final
@@ -106,10 +160,10 @@ def build_clean_rows() -> list[dict]:
         n_lines = random.choices([1, 2, 3, 4], weights=[50, 30, 15, 5])[0]
         chosen = set()
         while len(chosen) < n_lines:
-            chosen.add(random.choices(product_names, weights=PRODUCT_WEIGHTS)[0])
+            chosen.add(random.choices(product_names, weights=product_weights)[0])
 
         for product in sorted(chosen):
-            category, price = PRODUCTS[product]
+            category, price, _ = PRODUCTS[product]
             rows.append({
                 "fecha": order_date,
                 "pedido_id": order_id,
@@ -161,20 +215,24 @@ def save_excel(rows: list[dict], output_path: Path) -> None:
     """Guarda las filas en Excel con columnas legibles."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows)
-    df.to_excel(output_path, index=False, sheet_name="ventas")
 
-    # Retoque visual con openpyxl: ancho de columnas y formato de fecha/precio.
-    # No cambia los datos, solo cómo se ven al abrir el Excel.
-    wb = load_workbook(output_path)
-    ws = wb["ventas"]
-    widths = {"A": 12, "B": 12, "C": 30, "D": 14, "E": 10, "F": 16, "G": 12}
-    for col, width in widths.items():
-        ws.column_dimensions[col].width = width
-    for row in ws.iter_rows(min_row=2):
-        row[0].number_format = "DD/MM/YYYY"   # fecha
-        row[5].number_format = "#,##0.00"     # precio_unitario
-    ws.freeze_panes = "A2"  # la cabecera se queda fija al bajar
-    wb.save(output_path)
+    # Escribimos y damos formato en una sola pasada (sin volver a abrir el archivo:
+    # con 25.000 filas, reabrirlo costaría varios segundos más)
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="ventas")
+
+        # Retoque visual: ancho de columnas y formato de fecha/precio.
+        # No cambia los datos, solo cómo se ven al abrir el Excel.
+        ws = writer.sheets["ventas"]
+        widths = {"A": 12, "B": 12, "C": 32, "D": 14, "E": 10, "F": 16, "G": 12}
+        for col, width in widths.items():
+            ws.column_dimensions[col].width = width
+        for row in ws.iter_rows(min_row=2):
+            row[0].number_format = "DD/MM/YYYY"   # fecha
+            row[5].number_format = "#,##0.00"     # precio_unitario
+        ws.freeze_panes = "A2"  # la cabecera se queda fija al bajar
+    # Al salir del "with", pandas guarda el archivo
+
     make_reproducible(output_path)
 
 
