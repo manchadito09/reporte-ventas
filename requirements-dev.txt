@@ -1,0 +1,5 @@
+# Lo necesario para usar el programa
+-r requirements.txt
+
+# Solo para fabricar InformeVentas.exe (el usuario final no lo necesita)
+pyinstaller>=6.0
