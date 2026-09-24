@@ -172,3 +172,19 @@ def test_summary_monthly_and_category_percentages():
     # Porcentajes por categoría: Informática 130/200, Oficina 70/200
     pct = dict(zip(summary["by_category"]["categoria"], summary["by_category"]["porcentaje"]))
     assert pct == pytest.approx({"Informática": 65.0, "Oficina": 35.0})
+
+
+def test_summary_full_year_months_in_order():
+    # Un pedido por mes de 2025, metidos en el Excel desordenados
+    months = [7, 12, 1, 5, 9, 3, 11, 2, 8, 4, 10, 6]
+    df = make_df([
+        (f"2025-{m:02d}-15", f"PED-{m}", "Ratón", "Informática", 1, float(m), "Madrid")
+        for m in months
+    ])
+    clean, _ = clean_data(df)
+
+    monthly = compute_summary(clean)["monthly"]
+
+    # Salen los 12 meses, de enero a diciembre, cada uno con su importe
+    assert [p.month for p in monthly.index] == list(range(1, 13))
+    assert monthly.tolist() == pytest.approx([float(m) for m in range(1, 13)])
