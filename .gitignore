@@ -12,3 +12,8 @@ __pycache__/
 
 # Archivos temporales de Excel abierto
 ~$*.xlsx
+
+# Restos de PyInstaller (el .exe se reparte en una Release de GitHub, no en git)
+build/
+dist/
+*.spec
