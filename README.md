@@ -56,6 +56,7 @@ Antes de calcular nada, **limpia los datos**:
 | Fechas en texto (`2025-01-05` o `05/01/2025`) | Las entiende sin confundir día y mes |
 | Devoluciones (cantidad negativa) | Las **resta** del total y lo indica en el informe |
 | Cabeceras con espacios o mayúsculas (`" Fecha "`, `PRODUCTO`), columnas extra o en otro orden | Las reconoce igual |
+| Cantidades con decimales (`2,5` kg, `0,75` m) | Las respeta: 2,5 × 10 € = 25 € |
 | Cantidad 0, precio vacío o ilegible, fecha rota | Descarta la fila |
 
 Si el Excel no existe o le faltan columnas, lo avisa con un mensaje claro en español.
@@ -178,6 +179,15 @@ reporte-ventas/
 ├── requirements.txt     # librerías para usar el programa
 └── requirements-dev.txt # + PyInstaller, para fabricar el .exe
 ```
+
+## Preguntas para el cliente
+
+Antes de usarlo con datos reales, conviene confirmar con el cliente dos decisiones:
+
+| Pregunta | Qué hace ahora el programa | Por qué preguntarlo |
+|---|---|---|
+| **Dos filas idénticas, ¿son un error o dos compras?** | Las trata como duplicado y se queda con una | Si alguien compra lo mismo dos veces en el mismo pedido y se apunta en dos líneas, serían ventas reales |
+| **¿Se vende por unidades o también por peso/longitud?** | Acepta decimales (`2,5`) | Si solo vende unidades, un `2,5` sería un error de tecleo y convendría avisar |
 
 ## Mejoras futuras
 
