@@ -13,6 +13,7 @@ Uso:
 
 import argparse
 import io
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -54,6 +55,10 @@ INK = "#0b0b0b"         # texto principal
 INK_SOFT = "#52514e"    # texto secundario
 LINE = "#e4e3df"        # líneas finas y bordes
 PANEL = "#f4f4f2"       # fondo de las cajas de KPI
+WARNING = "#b54708"     # ámbar oscuro: solo para el aviso de calidad de datos
+
+# Si se descarta más de este % de filas con datos, el informe avisa
+INVALID_WARNING_SHARE = 0.05
 
 
 class ReportError(Exception):
@@ -122,6 +127,35 @@ def _parse_dates(dates: pd.Series) -> pd.Series:
     return iso.fillna(spanish)
 
 
+def _parse_number(value) -> float:
+    """Convierte un número escrito a mano en float. NaN si no se entiende.
+
+    Acepta el formato español que se teclea en las oficinas:
+        22.9        -> 22.9      (ya es número)
+        "22,90"     -> 22.9      (coma decimal)
+        "22,90 €"   -> 22.9      (con símbolo de euro)
+        "1.234,56"  -> 1234.56   (punto de miles + coma decimal)
+        "1.234"     -> 1234.0    (punto de miles: 3 cifras detrás)
+        "-3"        -> -3.0      (devolución)
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    if value is None or pd.isna(value):
+        return float("nan")
+
+    text = str(value).replace("€", "").replace("\xa0", "").replace(" ", "").strip()
+    if "," in text:
+        # La coma es la de los decimales: los puntos que haya son de miles
+        text = text.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"-?\d{1,3}(\.\d{3})+", text):
+        # Solo puntos, con grupos de 3 cifras: son puntos de miles ("1.234")
+        text = text.replace(".", "")
+    try:
+        return float(text)
+    except ValueError:
+        return float("nan")
+
+
 def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Limpia el Excel y devuelve (datos_limpios, resumen_de_la_limpieza).
 
@@ -159,22 +193,28 @@ def clean_data(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     df = df[~dup]
     report["duplicates"] = int(dup.sum())
 
-    # 4) Tipos. errors="coerce" = si algo no se puede convertir, se queda vacío (NaN)
+    # 4) Tipos. Lo que no se pueda convertir se queda vacío (NaN) y se descarta
     df["fecha"] = _parse_dates(df["fecha"])
-    df["cantidad"] = pd.to_numeric(df["cantidad"], errors="coerce")
-    df["precio_unitario"] = pd.to_numeric(df["precio_unitario"], errors="coerce")
+    df["cantidad"] = df["cantidad"].map(_parse_number)
+    df["precio_unitario"] = df["precio_unitario"].map(_parse_number)
 
+    # Cantidad negativa = devolución (válida, se resta). Cantidad 0 o precio
+    # negativo no tienen sentido: se descartan.
     invalid = (
         df[REQUIRED_COLUMNS].isna().any(axis=1)
-        | (df["cantidad"] <= 0)
+        | (df["cantidad"] == 0)
         | (df["precio_unitario"] < 0)
     )
     df = df[~invalid]
     report["invalid_rows"] = int(invalid.sum())
+    # Qué parte de las filas con datos no se pudo usar (0.40 = 40 %).
+    # Si es mucha, el informe avisa: el total podría estar incompleto.
+    report["invalid_share"] = report["invalid_rows"] / len(invalid) if len(invalid) else 0.0
 
     df["cantidad"] = df["cantidad"].astype(int)
+    report["returns"] = int((df["cantidad"] < 0).sum())
 
-    # 5) Ingreso de cada línea
+    # 5) Ingreso de cada línea (negativo en las devoluciones)
     df["ingreso"] = df["cantidad"] * df["precio_unitario"]
 
     report["rows_out"] = len(df)
@@ -223,6 +263,22 @@ def compute_summary(df: pd.DataFrame) -> dict:
     }
 
 
+def fold_small_rows(table: pd.DataFrame, label_col: str, max_rows: int) -> pd.DataFrame:
+    """Deja las (max_rows - 1) filas más grandes y junta el resto en "Otras (N)".
+
+    Así una tabla con 15 categorías no se sale de la página.
+    Suma las columnas de importe y porcentaje; la tabla ya viene ordenada.
+    """
+    if len(table) <= max_rows:
+        return table
+    keep = table.head(max_rows - 1)
+    rest = table.iloc[max_rows - 1:]
+    other = {label_col: f"Otras ({len(rest)})",
+             "ingresos": rest["ingresos"].sum(),
+             "porcentaje": rest["porcentaje"].sum()}
+    return pd.concat([keep, pd.DataFrame([other])], ignore_index=True)
+
+
 # --------------------------------------------------------------------------
 # Formato español de números
 # --------------------------------------------------------------------------
@@ -256,15 +312,25 @@ def format_period(date_from: date, date_to: date) -> str:
 # --------------------------------------------------------------------------
 # 4) Gráfico
 # --------------------------------------------------------------------------
+def month_labels(periods) -> list[str]:
+    """Etiquetas del eje X. Si hay meses de varios años, todas llevan el año.
+
+    Un solo año:  Ene, Feb, Mar...
+    Varios años:  Nov 24, Dic 24, Ene 25...  (así no se confunde de qué año es cada mes)
+    """
+    several_years = len({p.year for p in periods}) > 1
+    return [
+        MONTH_NAMES[p.month - 1] + (f" {p.year % 100:02d}" if several_years else "")
+        for p in periods
+    ]
+
+
 def build_chart(monthly: pd.Series) -> io.BytesIO:
     """Dibuja las ventas por mes y devuelve la imagen PNG en memoria.
 
     En memoria (BytesIO) = no se crea ningún archivo temporal en disco.
     """
-    labels = [
-        MONTH_NAMES[p.month - 1] + ("" if p.year == monthly.index[-1].year else f" {p.year % 100}")
-        for p in monthly.index
-    ]
+    labels = month_labels(monthly.index)
     values = monthly.to_numpy()
 
     fig, ax = plt.subplots(figsize=CHART_SIZE, dpi=200)
@@ -288,7 +354,9 @@ def build_chart(monthly: pd.Series) -> io.BytesIO:
     ax.spines["bottom"].set_color(LINE)
     ax.set_yticks([])
     ax.tick_params(axis="x", length=0, labelsize=9, colors=INK_SOFT, pad=6)
-    ax.set_ylim(0, values.max() * 1.18)  # hueco para las etiquetas de arriba
+    # Hueco arriba para las etiquetas. Abajo, 0; salvo que algún mes sea
+    # negativo (más devoluciones que ventas), para que su barra no quede oculta
+    ax.set_ylim(min(0, values.min() * 1.18), max(values.max(), 0) * 1.18 or 1)
 
     fig.tight_layout(pad=0.4)
     buffer = io.BytesIO()
@@ -351,9 +419,29 @@ def _kpi_box(pdf: FPDF, x: float, y: float, w: float, label: str, value: str) ->
     pdf.cell(w - 8, 8, value)
 
 
+def quality_warning(cleaning: dict) -> str | None:
+    """Texto de aviso si se descartó mucho del Excel; None si todo va bien."""
+    if cleaning.get("invalid_share", 0) <= INVALID_WARNING_SHARE:
+        return None
+    return (f"⚠ Revisa tu Excel: se descartaron {format_number(cleaning['invalid_rows'])} filas "
+            f"({format_number(cleaning['invalid_share'] * 100, 0)} %) con datos no válidos")
+
+
+def fit_text(pdf: FPDF, text: str, max_width: float) -> str:
+    """Recorta el texto con "…" si no cabe en max_width (mm) con la fuente actual."""
+    if pdf.get_string_width(text) <= max_width:
+        return text
+    while text and pdf.get_string_width(text + "…") > max_width:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
 def _table(pdf: FPDF, x: float, w: float, headers: list[str], rows: list[list[str]],
            col_widths: list[float]) -> None:
-    """Tabla sencilla: cabecera en gris, líneas finas, números alineados a la derecha."""
+    """Tabla sencilla: cabecera en gris, líneas finas, números alineados a la derecha.
+
+    Los textos que no caben en su columna se recortan con "…".
+    """
     widths = [w * c for c in col_widths]
     aligns = ["L"] + ["R"] * (len(headers) - 1)
 
@@ -371,7 +459,8 @@ def _table(pdf: FPDF, x: float, w: float, headers: list[str], rows: list[list[st
     for row in rows:
         pdf.set_x(x)
         for value, cw, al in zip(row, widths, aligns):
-            pdf.cell(cw, 7, value, align=al)
+            # 2 mm de margen: la celda deja 1 mm de aire a cada lado
+            pdf.cell(cw, 7, fit_text(pdf, str(value), cw - 2), align=al)
         pdf.ln(7)
         pdf.line(x, pdf.get_y(), x + w, pdf.get_y())
 
@@ -435,7 +524,8 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     pdf.set_text_color(*_rgb(INK))
     pdf.cell(right_w, 7, "Ventas por categoría")
     pdf.set_xy(right_x, y + 7)
-    cat = summary["by_category"]
+    # Máximo 7 filas: si hay más categorías, las pequeñas van juntas en "Otras"
+    cat = fold_small_rows(summary["by_category"], "categoria", max_rows=7)
     _table(
         pdf, right_x, right_w,
         ["Categoría", "Ingresos", "%"],
@@ -445,18 +535,28 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     )
     # --- Nota de calidad de datos: enseña al cliente que se limpió el Excel ---
     # Va anclada abajo, justo encima del pie, como la "letra pequeña"
-    pdf.set_y(max(y_after_left, pdf.get_y(), pdf.h - 36))
+    pdf.set_y(max(y_after_left, pdf.get_y(), pdf.h - 38))
     pdf.set_font("DejaVu", "B", 8.5)
+    warning = quality_warning(cleaning)
+    if warning:
+        # Aviso destacado: el total puede estar incompleto
+        pdf.set_text_color(*_rgb(WARNING))
+        pdf.cell(0, 5, warning, new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.set_text_color(*_rgb(INK_SOFT))
+        pdf.cell(0, 5, "Calidad de los datos", new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(*_rgb(INK_SOFT))
-    pdf.cell(0, 5, "Calidad de los datos", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("DejaVu", "", 8)
+    returns = cleaning.get("returns", 0)
     note = (
         f"Se leyeron {format_number(cleaning['rows_in'])} filas del Excel. "
         f"Se descartaron {format_number(cleaning['empty_rows'])} filas vacías, "
         f"{format_number(cleaning['duplicates'])} duplicadas y "
-        f"{format_number(cleaning['invalid_rows'])} con datos incompletos, "
+        f"{format_number(cleaning['invalid_rows'])} con datos no válidos "
+        f"(cantidad 0, o precio o fecha que no se pueden leer), "
         f"y se corrigieron {format_number(cleaning['names_fixed'])} nombres de producto mal escritos. "
-        f"El informe usa {format_number(cleaning['rows_out'])} líneas de pedido válidas."
+        f"El informe usa {format_number(cleaning['rows_out'])} líneas de pedido válidas"
+        + (f", incluidas {format_number(returns)} devoluciones (restadas del total)." if returns else ".")
     )
     pdf.multi_cell(0, 4.5, note, align="L")  # "L" evita huecos raros entre palabras
 
@@ -498,7 +598,7 @@ def main() -> int:
     output_path = Path(args.output)
 
     try:
-        summary, _ = generate_report(input_path, output_path)
+        summary, cleaning = generate_report(input_path, output_path)
     except ReportError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1  # código de salida != 0 -> "algo fue mal" (útil en scripts)
@@ -507,6 +607,9 @@ def main() -> int:
     print(f"  Total vendido: {format_eur(summary['total_sales'])}")
     print(f"  Pedidos: {format_number(summary['n_orders'])}")
     print(f"  Ticket medio: {format_eur(summary['avg_ticket'])}")
+    warning = quality_warning(cleaning)
+    if warning:
+        print(f"  {warning}")
     return 0
 
 

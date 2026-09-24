@@ -20,7 +20,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from generate_report import ReportError, generate_report
+from generate_report import ReportError, generate_report, quality_warning
 
 APP_TITLE = "Informe de ventas"
 
@@ -120,6 +120,17 @@ def main() -> int:
             parent=root,
         )
         return 1
+
+    # Si se descartaron muchas filas, avisamos antes de abrir el PDF:
+    # el contable no ve la terminal y el total podría estar incompleto
+    _, cleaning = result["value"]
+    warning = quality_warning(cleaning)
+    if warning:
+        messagebox.showwarning(
+            APP_TITLE,
+            warning.lstrip("⚠ ") + "\n\nEl informe se ha creado igualmente.",
+            parent=root,
+        )
 
     os.startfile(output_path)  # abre el PDF con el programa por defecto (solo Windows)
     return 0
