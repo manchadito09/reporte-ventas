@@ -232,7 +232,12 @@ def format_eur(value: float, decimals: int = 2) -> str:
 
 
 def format_period(date_from: date, date_to: date) -> str:
-    """Ej.: 'enero – junio 2026' o 'noviembre 2025 – febrero 2026'."""
+    """Ej.: 'año 2025', 'enero – junio 2026' o 'noviembre 2025 – febrero 2026'."""
+    # Año natural completo: de enero a diciembre del mismo año
+    if (date_from.year == date_to.year
+            and (date_from.month, date_from.day) == (1, 1)
+            and (date_to.month, date_to.day) == (12, 31)):
+        return f"año {date_to.year}"
     m1 = MONTH_NAMES_LONG[date_from.month - 1]
     m2 = MONTH_NAMES_LONG[date_to.month - 1]
     if date_from.year == date_to.year:
@@ -259,10 +264,13 @@ def build_chart(monthly: pd.Series) -> io.BytesIO:
     fig, ax = plt.subplots(figsize=CHART_SIZE, dpi=200)
     bars = ax.bar(labels, values, width=0.55, color=BLUE)
 
-    # Valor encima de cada barra: así sobran el eje Y y la cuadrícula
+    # Valor encima de cada barra, en miles (la unidad va en el título).
+    # Así sobran el eje Y y la cuadrícula. Con cifras grandes, sin decimales
+    # para que las 12 etiquetas quepan sin pisarse.
+    decimals = 0 if values.max() >= 100_000 else 1
     for bar, value in zip(bars, values):
         ax.annotate(
-            format_number(value / 1000, 1) + " mil €",
+            format_number(value / 1000, decimals),
             xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
             xytext=(0, 4), textcoords="offset points",
             ha="center", va="bottom", fontsize=8.5, color=INK,
@@ -384,7 +392,7 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     box_w = (content_w - 2 * gap) / 3
     y = pdf.get_y()
     kpis = [
-        ("Total vendido", format_eur(summary["total_sales"])),
+        ("Total vendido", format_eur(summary["total_sales"], 0)),  # sin céntimos: son ruido en millones
         ("Pedidos", format_number(summary["n_orders"])),
         ("Ticket medio", format_eur(summary["avg_ticket"])),
     ]
@@ -393,7 +401,7 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     pdf.set_y(y + 22 + 8)
 
     # --- Gráfico ---
-    _section_title(pdf, "Ventas por mes")
+    _section_title(pdf, "Ventas por mes (miles de €)")
     chart_h = content_w * CHART_SIZE[1] / CHART_SIZE[0]  # misma proporción que la figura
     pdf.image(chart_png, x=pdf.l_margin, w=content_w, h=chart_h)
     pdf.ln(6)
@@ -410,7 +418,7 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     _table(
         pdf, pdf.l_margin, left_w,
         ["Producto", "Unidades", "Ingresos"],
-        [[r.producto, format_number(r.unidades), format_eur(r.ingresos)]
+        [[r.producto, format_number(r.unidades), format_eur(r.ingresos, 0)]
          for r in top.itertuples()],
         [0.52, 0.18, 0.30],
     )
@@ -438,12 +446,13 @@ def build_pdf(summary: dict, chart_png: io.BytesIO, cleaning: dict,
     pdf.set_font("DejaVu", "", 8)
     note = (
         f"Se leyeron {format_number(cleaning['rows_in'])} filas del Excel. "
-        f"Se descartaron {cleaning['empty_rows']} filas vacías, "
-        f"{cleaning['duplicates']} duplicadas y {cleaning['invalid_rows']} con datos incompletos, "
-        f"y se corrigieron {cleaning['names_fixed']} nombres de producto mal escritos. "
+        f"Se descartaron {format_number(cleaning['empty_rows'])} filas vacías, "
+        f"{format_number(cleaning['duplicates'])} duplicadas y "
+        f"{format_number(cleaning['invalid_rows'])} con datos incompletos, "
+        f"y se corrigieron {format_number(cleaning['names_fixed'])} nombres de producto mal escritos. "
         f"El informe usa {format_number(cleaning['rows_out'])} líneas de pedido válidas."
     )
-    pdf.multi_cell(0, 4.5, note)
+    pdf.multi_cell(0, 4.5, note, align="L")  # "L" evita huecos raros entre palabras
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
