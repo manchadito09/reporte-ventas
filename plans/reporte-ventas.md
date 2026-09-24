@@ -33,5 +33,20 @@ Commit inicial (este plan) en `main`. Luego una rama por tarea:
 `funcionalidad/generar-datos`, `funcionalidad/generar-reporte`,
 `funcionalidad/tests`, `funcionalidad/readme`. Fusión a `main` al acabar cada una.
 
+## Cambio: análisis anual con más volumen
+Pasamos de un semestre pequeño a **un año completo (2025)** con mucho más catálogo.
+Así el ejemplo se parece más al Excel de una empresa real y demuestra que el script aguanta volumen.
+
+- **Año 2025 completo**: es el último año cerrado (2026 aún no ha terminado).
+- **~25.000 líneas de pedido** (antes 1.200). Se lee en ~5 s y pesa ~1 MB. Más volumen haría el ejemplo lento sin enseñar nada nuevo.
+- **~60 productos en 6 categorías** (antes 15 en 4).
+- **Temporada anual realista**: rebajas de enero, verano flojo, Black Friday y Navidad fuertes.
+- **Suciedad proporcional**: más vacías y duplicados, mismo tipo de errores.
+- **PDF**: sigue en 1 página. El gráfico pasa a 12 barras con etiquetas más cortas; top 5 y categorías siguen igual.
+- **Tests**: no cambian (usan datos hechos a mano). Añadimos uno que compruebe que 12 meses salen en orden.
+- **README**: se retoma después, con las cifras y capturas nuevas.
+
+Rama: `funcionalidad/analisis-anual`.
+
 ## Fuera de alcance (v1)
 Email, interfaz gráfica, varios formatos de Excel → “Mejoras futuras” en el README.
