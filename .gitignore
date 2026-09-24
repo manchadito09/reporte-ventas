@@ -17,3 +17,6 @@ __pycache__/
 build/
 dist/
 *.spec
+
+# PDFs que crea el .exe junto a cada Excel (salida del usuario, no código)
+*_informe.pdf
