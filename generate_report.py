@@ -234,6 +234,10 @@ def compute_summary(df: pd.DataFrame) -> dict:
 
     # Ventas por mes. "period" agrupa por año+mes (ene-2026 != ene-2027)
     monthly = df.groupby(df["fecha"].dt.to_period("M"))["ingreso"].sum().sort_index()
+    # groupby solo crea los meses que tienen ventas. Rellenamos con 0 los que faltan
+    # (p. ej. agosto cerrado por vacaciones) para que el gráfico no se salte meses
+    full_range = pd.period_range(monthly.index.min(), monthly.index.max(), freq="M")
+    monthly = monthly.reindex(full_range, fill_value=0)
 
     top_products = (
         df.groupby("producto")
