@@ -241,6 +241,20 @@ def test_summary_full_year_months_in_order():
     assert monthly.tolist() == pytest.approx([float(m) for m in range(1, 13)])
 
 
+def test_summary_month_without_sales_appears_with_zero():
+    # La tienda cierra en agosto: el gráfico debe enseñar agosto a 0, no saltárselo
+    df = make_df([
+        ("2025-07-10", "PED-1", "Ratón", "Informática", 1, 30.0, "Madrid"),
+        ("2025-09-10", "PED-2", "Ratón", "Informática", 1, 50.0, "Madrid"),
+    ])
+    clean, _ = clean_data(df)
+
+    monthly = compute_summary(clean)["monthly"]
+
+    assert [p.month for p in monthly.index] == [7, 8, 9]
+    assert monthly.tolist() == pytest.approx([30.0, 0.0, 50.0])
+
+
 # --------------------------------------------------------------------------
 # Presentación del PDF
 # --------------------------------------------------------------------------
